@@ -1,0 +1,76 @@
+#To create a basic reinforcement learning agent using TorchRL
+#(PyTorch's RL library), you need to set up the environment, policy, collector, and training loop. Below is a simple script for a
+#DQN agent interacting with the CartPole environment using TorchRL. This illustrates essential components: environment setup,
+#agent definition, data collection, and training steps.
+
+import torch
+from torch import nn
+from torchrl.envs import GymEnv
+from torchrl.modules import DQN
+from torchrl.collectors import SyncDataCollector
+from torchrl.record import RewardSumRecorder
+from torchrl.data import ReplayBuffer, LazyTensorStorage
+
+# Environment setup
+env = GymEnv("CartPole-v1")
+env.set_seed(0)
+
+# Network definition
+class QNet(nn.Module):
+    def __init__(self, in_features, num_actions):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(in_features, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_actions)
+        )
+
+    def forward(self, x):
+        return self.fc(x)
+
+net = QNet(env.observation_spec.shape[-1], env.action_spec.shape[-1])
+
+# DQN agent
+policy = DQN(
+    env.observation_spec, env.action_spec, module=net
+)
+
+# Replay buffer
+rb = ReplayBuffer(
+    capacity=10000,
+    storage=LazyTensorStorage(capacity=10000)
+)
+
+# Data collector
+collector = SyncDataCollector(
+    env,
+    policy,
+    frames_per_batch=128,
+    total_frames=10000,
+    split_trajs=False
+)
+collector.set_seed(0)
+
+# Training loop
+optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
+reward_recorder = RewardSumRecorder()
+
+for i, data in enumerate(collector):
+    rb.extend(data)
+    batch = rb.sample(32)
+    loss = policy.loss(batch)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    
+    reward_recorder(data)
+    print(
+        f"Iteration {i}: mean episode reward={reward_recorder.summed_reward / reward_recorder.episodes}"
+    )
+    # Train for 100 iterations
+    if i > 100:
+        break
+
+#This script gives you a minimal TorchRL RL training pipeline: CartPole environment, DQN policy, data collection, and training loop.
+#    You can modify network architecture, environment, or policy for more advanced experiments. Let me know if you need a specific RL algorithm or another environment.
+
